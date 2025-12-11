@@ -37,19 +37,38 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
+  let baseResult;
+
   try {
     const prompt = await buildPrompt(info, tab);
-    const answer = await callModel(prompt, settings);
-    await persistResult({
+    baseResult = {
       source: info.menuItemId === 'ai-selection' ? 'selection' : 'page',
       question: prompt,
-      answer,
       url: tab.url || '',
       createdAt: Date.now()
-    });
+    };
+
+    await persistResult({ ...baseResult, status: 'loading', answer: '' });
     await api.tabs.create({ url: api.runtime.getURL('response.html') });
+
+    const answer = await callModel(prompt, settings);
+
+    await persistResult({
+      ...baseResult,
+      status: 'complete',
+      answer,
+      completedAt: Date.now()
+    });
   } catch (error) {
     log('Error calling model', error);
+    if (baseResult) {
+      await persistResult({
+        ...baseResult,
+        status: 'error',
+        answer: error?.message || String(error),
+        completedAt: Date.now()
+      });
+    }
     api.notifications.create({
       type: 'basic',
       iconUrl: 'icons/icon-48.png',
