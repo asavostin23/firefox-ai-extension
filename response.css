@@ -194,6 +194,26 @@ button[disabled] {
   text-align: left;
 }
 
+.empty-state {
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.empty-state h2 {
+  margin: 0;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
