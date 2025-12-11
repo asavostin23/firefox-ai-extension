@@ -180,6 +180,7 @@ let streamingTarget = null;
 let sending = false;
 let streamingState = { buffer: '', inThink: false };
 let streamingPlaceholderActive = false;
+let followUpEnabled = false;
 
 function showStatus(message, isError = false) {
   const el = $('status');
@@ -192,8 +193,16 @@ function setSendingState(isSending) {
   sending = isSending;
   const prompt = $('prompt');
   const sendBtn = $('send');
-  if (prompt) prompt.disabled = isSending;
-  if (sendBtn) sendBtn.disabled = isSending;
+  if (prompt) prompt.disabled = isSending || !followUpEnabled;
+  if (sendBtn) sendBtn.disabled = isSending || !followUpEnabled;
+}
+
+function setFollowUpEnabled(isEnabled) {
+  followUpEnabled = isEnabled;
+  const prompt = $('prompt');
+  const sendBtn = $('send');
+  if (prompt) prompt.disabled = sending || !followUpEnabled;
+  if (sendBtn) sendBtn.disabled = sending || !followUpEnabled;
 }
 
 function renderMeta(data) {
@@ -264,6 +273,7 @@ function renderConversation(data) {
   streamingPlaceholderActive = false;
 
   renderMeta(data);
+  setFollowUpEnabled(Boolean(data));
 
   if (!data) return;
 
@@ -498,6 +508,24 @@ function requestConversation() {
   port?.postMessage({ type: 'get-conversation' });
 }
 
+function clearConversation() {
+  conversation = null;
+  renderMeta(null);
+
+  const container = $('conversation');
+  if (container) container.textContent = '';
+
+  streamingTarget = null;
+  streamingState = { buffer: '', inThink: false };
+  streamingPlaceholderActive = false;
+
+  setSendingState(false);
+  setFollowUpEnabled(false);
+  showStatus('Conversation cleared.');
+
+  port?.postMessage({ type: 'clear-conversation' });
+}
+
 function handleFollowUp(evt) {
   evt.preventDefault();
   if (sending) return;
@@ -505,6 +533,11 @@ function handleFollowUp(evt) {
   const prompt = $('prompt').value.trim();
   if (!prompt) {
     showStatus('Enter a follow-up prompt.', true);
+    return;
+  }
+
+  if (!followUpEnabled) {
+    showStatus('Start a new conversation to ask follow-ups.', true);
     return;
   }
 
@@ -542,7 +575,8 @@ function initPort() {
 }
 
 (function init() {
-  $('refresh').addEventListener('click', requestConversation);
+  setFollowUpEnabled(false);
+  $('clear').addEventListener('click', clearConversation);
   $('followup-form').addEventListener('submit', handleFollowUp);
 
   initPort();
