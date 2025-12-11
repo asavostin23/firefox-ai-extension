@@ -57,4 +57,37 @@ button {
   border-radius: 8px;
   padding: 16px;
   line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.answer-visible {
+  white-space: pre-wrap;
+}
+
+.reasoning-toggle {
+  align-self: flex-start;
+  background: rgba(147, 197, 253, 0.16);
+  border-color: rgba(147, 197, 253, 0.4);
+  color: #e0f2fe;
+}
+
+.reasoning {
+  border: 1px dashed rgba(147, 197, 253, 0.6);
+  border-radius: 6px;
+  padding: 12px;
+  background: rgba(147, 197, 253, 0.08);
+}
+
+.reasoning-label {
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #bfdbfe;
+  font-size: 12px;
+}
+
+.hidden {
+  display: none;
 }
