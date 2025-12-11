@@ -152,6 +152,11 @@ api.runtime.onConnect.addListener((port) => {
     if (message?.type === 'followup') {
       await handleFollowUp(message.prompt, port);
     }
+
+    if (message?.type === 'clear-conversation') {
+      await clearConversationData();
+      broadcastConversation(null);
+    }
   });
 
   port.onDisconnect.addListener(() => {
@@ -391,6 +396,18 @@ async function getConversation() {
   return new Promise((resolve) => {
     api.storage.local.get([STORAGE_KEY], ({ [STORAGE_KEY]: conversation }) => {
       resolve(conversation || null);
+    });
+  });
+}
+
+async function clearConversationData() {
+  return new Promise((resolve, reject) => {
+    api.storage.local.remove([STORAGE_KEY], () => {
+      if (api.runtime.lastError) {
+        reject(api.runtime.lastError);
+      } else {
+        resolve();
+      }
     });
   });
 }
