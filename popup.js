@@ -8,6 +8,19 @@ const defaults = {
   maxTokens: 512
 };
 
+function getStoredSettings() {
+  return new Promise((resolve, reject) => {
+    api.storage.local.get(defaults, (items) => {
+      if (api.runtime.lastError) {
+        reject(api.runtime.lastError);
+        return;
+      }
+
+      resolve({ ...defaults, ...items });
+    });
+  });
+}
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -18,16 +31,18 @@ function showStatus(message, isError = false) {
   el.style.color = isError ? '#fecdd3' : '#a7f3d0';
 }
 
-function loadSettings() {
-  api.storage.local.get(defaults, (items) => {
-    const settings = { ...defaults, ...items };
+async function loadSettings() {
+  try {
+    const settings = await getStoredSettings();
     $('provider').value = settings.provider;
     $('apiKey').value = settings.apiKey || '';
     $('baseUrl').value = settings.baseUrl;
     $('model').value = settings.model;
     $('temperature').value = settings.temperature;
     $('maxTokens').value = settings.maxTokens;
-  });
+  } catch (error) {
+    showStatus(error.message || String(error), true);
+  }
 }
 
 function parseNumberInput(id, fallback) {
@@ -36,23 +51,26 @@ function parseNumberInput(id, fallback) {
   const min = input.min === '' ? -Infinity : Number(input.min);
   const max = input.max === '' ? Infinity : Number(input.max);
 
-  if (Number.isFinite(parsed)) {
-    return Math.min(max, Math.max(min, parsed));
-  }
+  const value = Number.isFinite(parsed)
+    ? Math.min(max, Math.max(min, parsed))
+    : fallback;
 
-  return fallback;
+  input.value = value;
+  return value;
 }
 
-function saveSettings(evt) {
+async function saveSettings(evt) {
   evt.preventDefault();
-  api.storage.local.get(defaults, (existing) => {
+
+  try {
+    const existing = await getStoredSettings();
     const payload = {
       provider: $('provider').value,
       apiKey: $('apiKey').value.trim(),
       baseUrl: $('baseUrl').value.trim(),
       model: $('model').value.trim(),
-      temperature: parseNumberInput('temperature', existing.temperature ?? defaults.temperature),
-      maxTokens: parseNumberInput('maxTokens', existing.maxTokens ?? defaults.maxTokens)
+      temperature: parseNumberInput('temperature', existing.temperature),
+      maxTokens: parseNumberInput('maxTokens', existing.maxTokens)
     };
 
     api.storage.local.set(payload, () => {
@@ -62,7 +80,9 @@ function saveSettings(evt) {
         showStatus('Saved. Use the context menu to send prompts.');
       }
     });
-  });
+  } catch (error) {
+    showStatus(error.message || String(error), true);
+  }
 }
 
 (function init() {
