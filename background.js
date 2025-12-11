@@ -6,7 +6,7 @@ const DEFAULT_SETTINGS = {
   baseUrl: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
   temperature: 0.3,
-  maxTokens: 512
+  maxTokens: 4096
 };
 
 function log(...args) {
