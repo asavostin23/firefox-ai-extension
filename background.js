@@ -61,21 +61,30 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
 
 async function buildPrompt(info, tab) {
   if (info.menuItemId === 'ai-selection') {
-    return `Provide a concise explanation for the following selection and include a short actionable insight if relevant.\n\nSelection:\n${info.selectionText}`;
+    const tabId = tab.id;
+    const selectionText = (info.selectionText || '').trim().slice(0, 4000);
+    const { title, text } = await getPageContext(tabId, 8000);
+
+    return `Provide a concise explanation for the following selection using the surrounding page context and include a short actionable insight if relevant.\n\nPage URL: ${tab.url}\nPage Title: ${title || 'Untitled'}\nPage text snippet:\n${text}\n\nSelection:\n${selectionText}`;
   }
 
   const tabId = tab.id;
-  const pageText = await api.tabs.executeScript(tabId, {
+  const { title, text } = await getPageContext(tabId);
+  return `Provide a brief summary of this page and list the top 3 takeaways.\n\nURL: ${tab.url}\nTitle: ${title || 'Untitled'}\nContent:\n${text}`;
+}
+
+async function getPageContext(tabId, sliceLength = 12000) {
+  const pageData = await api.tabs.executeScript(tabId, {
     code: `(() => {
       const clone = document.body.cloneNode(true);
       const scripts = clone.querySelectorAll('script,style,noscript');
       scripts.forEach(el => el.remove());
       const text = clone.innerText || '';
-      return text.slice(0, 12000);
+      return { title: document.title || '', text: text.slice(0, ${sliceLength}) };
     })();`
   });
-  const content = Array.isArray(pageText) ? pageText[0] : '';
-  return `Provide a brief summary of this page and list the top 3 takeaways.\n\nURL: ${tab.url}\nContent:\n${content}`;
+  const context = Array.isArray(pageData) ? pageData[0] : {};
+  return { title: context?.title || '', text: context?.text || '' };
 }
 
 async function callModel(prompt, settings) {
