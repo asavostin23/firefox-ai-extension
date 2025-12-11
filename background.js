@@ -5,7 +5,7 @@ const DEFAULT_SETTINGS = {
   apiKey: '',
   baseUrl: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
-  responseTarget: 'tab',
+  responseTarget: 'sidebar',
   temperature: 0.3,
   maxTokens: 4096
 };
@@ -13,7 +13,6 @@ const DEFAULT_SETTINGS = {
 const SYSTEM_PROMPT = 'You are a helpful assistant for summarizing web content.';
 const STORAGE_KEY = 'conversation';
 const responsePorts = new Set();
-const RESPONSE_TARGETS = ['tab', 'sidebar', 'both'];
 
 function getDefaultBaseUrl(provider) {
   return provider === 'anthropic'
@@ -24,9 +23,7 @@ function getDefaultBaseUrl(provider) {
 function normalizeSettings(settings) {
   const provider = settings.provider || DEFAULT_SETTINGS.provider;
   let baseUrl = settings.baseUrl;
-  const responseTarget = RESPONSE_TARGETS.includes(settings.responseTarget)
-    ? settings.responseTarget
-    : DEFAULT_SETTINGS.responseTarget;
+  const responseTarget = DEFAULT_SETTINGS.responseTarget;
 
   if (!baseUrl || (provider === 'anthropic' && baseUrl === DEFAULT_SETTINGS.baseUrl)) {
     baseUrl = getDefaultBaseUrl(provider);
@@ -58,15 +55,10 @@ function openSidebar() {
   }
 }
 
-function openResponseViews(target) {
-  const shouldOpenTab = target === 'tab' || target === 'both';
-  const shouldOpenSidebar = target === 'sidebar' || target === 'both';
-
+function openResponseViews() {
   return {
-    tabPromise: shouldOpenTab
-      ? api.tabs.create({ url: api.runtime.getURL('response.html') })
-      : Promise.resolve(),
-    sidebarPromise: shouldOpenSidebar ? openSidebar() : Promise.resolve()
+    tabPromise: Promise.resolve(),
+    sidebarPromise: openSidebar(),
   };
 }
 
@@ -100,7 +92,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: prompt.content, displayText: prompt.displayText }
     ];
-    const { tabPromise: responseTabPromise, sidebarPromise } = openResponseViews(settings.responseTarget);
+    const { tabPromise: responseTabPromise, sidebarPromise } = openResponseViews();
 
     const initialConversation = buildConversation({
       source: info.menuItemId === 'ai-selection' ? 'selection' : 'page',

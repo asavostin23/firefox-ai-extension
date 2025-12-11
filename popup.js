@@ -4,7 +4,6 @@ const defaults = {
   apiKey: '',
   baseUrl: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
-  responseTarget: 'tab',
   temperature: 0.3,
   maxTokens: 4096
 };
@@ -60,7 +59,6 @@ async function loadSettings() {
     $('apiKey').value = settings.apiKey || '';
     $('baseUrl').value = settings.baseUrl;
     $('model').value = settings.model;
-    $('responseTarget').value = settings.responseTarget || defaults.responseTarget;
     $('temperature').value = settings.temperature;
     $('maxTokens').value = settings.maxTokens;
 
@@ -94,7 +92,6 @@ async function saveSettings(evt) {
       apiKey: $('apiKey').value.trim(),
       baseUrl: $('baseUrl').value.trim(),
       model: $('model').value.trim(),
-      responseTarget: $('responseTarget').value,
       temperature: parseNumberInput('temperature', existing.temperature),
       maxTokens: parseNumberInput('maxTokens', existing.maxTokens)
     };
