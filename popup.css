@@ -43,6 +43,11 @@ input, select, button {
   color: #f3f4f6;
 }
 
+select option {
+  color: #0b1624;
+  background: #f3f4f6;
+}
+
 input:focus, select:focus, button:focus {
   outline: 2px solid #4f46e5;
   border-color: #4f46e5;

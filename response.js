@@ -618,7 +618,10 @@ function initPort() {
 
 (function init() {
   setFollowUpEnabled(false);
-  $('clear').addEventListener('click', clearConversation);
+  const clearButton = $('clear');
+  if (clearButton) {
+    clearButton.addEventListener('click', clearConversation);
+  }
   $('followup-form').addEventListener('submit', handleFollowUp);
 
   initPort();
