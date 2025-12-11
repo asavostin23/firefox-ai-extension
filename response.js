@@ -224,7 +224,6 @@ function buildAssistantContent(answer) {
   const visibleSection = document.createElement('div');
   visibleSection.className = 'answer-visible';
   visibleNodes.forEach((node) => visibleSection.appendChild(document.importNode(node, true)));
-  wrapper.appendChild(visibleSection);
 
   if (reasoningNodes.length) {
     const toggle = document.createElement('button');
@@ -248,6 +247,8 @@ function buildAssistantContent(answer) {
 
     wrapper.append(toggle, reasoningSection);
   }
+
+  wrapper.appendChild(visibleSection);
 
   return wrapper;
 }
@@ -359,7 +360,7 @@ function ensureStreamingAssistant() {
   container.appendChild(messageEl);
   messageEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
-  streamingTarget = { container: messageEl, textNode, assistantContent };
+  streamingTarget = { container: messageEl, textNode, assistantContent, visibleSection };
   return streamingTarget;
 }
 
@@ -392,9 +393,17 @@ function ensureReasoningUI(target) {
     toggle.textContent = isHidden ? 'Show reasoning' : 'Hide reasoning';
   });
 
-  target.assistantContent.append(toggle, reasoningSection);
+  const anchor = target.visibleSection || target.assistantContent.firstChild;
+  if (anchor) {
+    target.assistantContent.insertBefore(reasoningSection, anchor);
+    target.assistantContent.insertBefore(toggle, reasoningSection);
+  } else {
+    target.assistantContent.append(toggle, reasoningSection);
+  }
+
   target.reasoningSection = reasoningSection;
   target.reasoningContent = reasoningContent;
+  target.reasoningToggle = toggle;
 }
 
 function appendReasoningChunk(chunk, target) {
