@@ -80,6 +80,14 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
+  // Open sidebar immediately on user gesture, before any async operations.
+  // Firefox requires sidebarAction.open() to be called synchronously in response
+  // to a user action; awaiting other operations first loses the gesture context.
+  let sidebarPromise = Promise.resolve();
+  if (info.menuItemId === 'ai-page') {
+    sidebarPromise = openSidebar();
+  }
+
   const settings = normalizeSettings(await loadSettings());
   if (!settings.apiKey) {
     await api.tabs.create({ url: api.runtime.getURL('popup.html') });
@@ -87,16 +95,11 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 
   try {
-    if (info.menuItemId === 'ai-page') {
-      await openSidebar();
-    }
-
     const prompt = await buildPrompt(info, tab);
     const conversationMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: prompt.content, displayText: prompt.displayText }
     ];
-    const { tabPromise: responseTabPromise, sidebarPromise } = openResponseViews();
 
     const initialConversation = buildConversation({
       source: info.menuItemId === 'ai-selection' ? 'selection' : 'page',
@@ -122,7 +125,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
 
     await persistConversation(conversation);
     broadcastConversation(conversation);
-    await Promise.all([responseTabPromise, sidebarPromise]);
+    await sidebarPromise;
   } catch (error) {
     log('Error calling model', error);
     api.notifications.create({
