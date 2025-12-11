@@ -172,6 +172,7 @@ let conversation = null;
 let port;
 let streamingTarget = null;
 let sending = false;
+let streamingState = { buffer: '', inThink: false };
 
 function showStatus(message, isError = false) {
   const el = $('status');
@@ -251,6 +252,7 @@ function renderConversation(data) {
 
   container.textContent = '';
   streamingTarget = null;
+  streamingState = { buffer: '', inThink: false };
 
   renderMeta(data);
 
@@ -319,21 +321,141 @@ function ensureStreamingAssistant() {
 
   const body = document.createElement('div');
   body.className = 'message-body';
+
+  const assistantContent = document.createElement('div');
+  assistantContent.className = 'assistant-content';
+
+  const visibleSection = document.createElement('div');
+  visibleSection.className = 'answer-visible';
   const textNode = document.createTextNode('');
-  body.appendChild(textNode);
+  visibleSection.appendChild(textNode);
+  assistantContent.appendChild(visibleSection);
+
+  body.appendChild(assistantContent);
 
   messageEl.appendChild(body);
   container.appendChild(messageEl);
   messageEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
-  streamingTarget = { container: messageEl, textNode };
+  streamingTarget = { container: messageEl, textNode, assistantContent };
   return streamingTarget;
+}
+
+function ensureReasoningUI(target) {
+  if (target.reasoningSection) return;
+
+  const toggle = document.createElement('button');
+  toggle.className = 'reasoning-toggle';
+  toggle.textContent = 'Show reasoning';
+
+  const reasoningSection = document.createElement('div');
+  reasoningSection.className = 'reasoning hidden';
+
+  const label = document.createElement('p');
+  label.className = 'reasoning-label';
+  label.textContent = 'Reasoning';
+  reasoningSection.appendChild(label);
+
+  const placeholder = document.createElement('p');
+  placeholder.className = 'reasoning-placeholder';
+  placeholder.textContent = 'Thinking…';
+  reasoningSection.appendChild(placeholder);
+
+  const reasoningContent = document.createElement('div');
+  reasoningContent.className = 'reasoning-stream';
+  reasoningSection.appendChild(reasoningContent);
+
+  toggle.addEventListener('click', () => {
+    const isHidden = reasoningSection.classList.toggle('hidden');
+    toggle.textContent = isHidden ? 'Show reasoning' : 'Hide reasoning';
+  });
+
+  target.assistantContent.append(toggle, reasoningSection);
+  target.reasoningSection = reasoningSection;
+  target.reasoningContent = reasoningContent;
+}
+
+function appendReasoningChunk(chunk, target) {
+  ensureReasoningUI(target);
+  if (!chunk) return;
+  const textNode = document.createTextNode(chunk);
+  target.reasoningContent.appendChild(textNode);
 }
 
 function handleToken(chunk) {
   const target = ensureStreamingAssistant();
   if (!target) return;
-  target.textNode.textContent += chunk;
+
+  const THINK_OPEN = '<think>';
+  const THINK_CLOSE = '</think>';
+  streamingState.buffer += chunk;
+
+  while (streamingState.buffer.length) {
+    const lowerBuffer = streamingState.buffer.toLowerCase();
+
+    if (!streamingState.inThink) {
+      const openIdx = lowerBuffer.indexOf(THINK_OPEN);
+      const closeIdx = lowerBuffer.indexOf(THINK_CLOSE);
+
+      if (openIdx === -1 && closeIdx === -1) {
+        const lastLt = lowerBuffer.lastIndexOf('<');
+        if (lastLt !== -1) {
+          const fragment = lowerBuffer.slice(lastLt);
+          if (THINK_OPEN.startsWith(fragment) || THINK_CLOSE.startsWith(fragment)) {
+            target.textNode.textContent += streamingState.buffer.slice(0, lastLt);
+            streamingState.buffer = streamingState.buffer.slice(lastLt);
+            break;
+          }
+        }
+
+        target.textNode.textContent += streamingState.buffer;
+        streamingState.buffer = '';
+        break;
+      }
+
+      if (closeIdx !== -1 && (openIdx === -1 || closeIdx < openIdx)) {
+        const visible = streamingState.buffer.slice(0, closeIdx + THINK_CLOSE.length);
+        target.textNode.textContent += visible;
+        streamingState.buffer = streamingState.buffer.slice(closeIdx + THINK_CLOSE.length);
+        continue;
+      }
+
+      if (openIdx !== -1) {
+        const before = streamingState.buffer.slice(0, openIdx);
+        target.textNode.textContent += before;
+        streamingState.buffer = streamingState.buffer.slice(openIdx + THINK_OPEN.length);
+        streamingState.inThink = true;
+        ensureReasoningUI(target);
+        continue;
+      }
+
+      target.textNode.textContent += streamingState.buffer;
+      streamingState.buffer = '';
+      break;
+    }
+
+    const closeIdx = lowerBuffer.indexOf(THINK_CLOSE);
+    if (closeIdx === -1) {
+      const lastLt = lowerBuffer.lastIndexOf('<');
+      if (lastLt !== -1) {
+        const fragment = lowerBuffer.slice(lastLt);
+        if (THINK_CLOSE.startsWith(fragment)) {
+          appendReasoningChunk(streamingState.buffer.slice(0, lastLt), target);
+          streamingState.buffer = streamingState.buffer.slice(lastLt);
+          break;
+        }
+      }
+
+      appendReasoningChunk(streamingState.buffer, target);
+      streamingState.buffer = '';
+      break;
+    }
+
+    const reasoningChunk = streamingState.buffer.slice(0, closeIdx);
+    appendReasoningChunk(reasoningChunk, target);
+    streamingState.buffer = streamingState.buffer.slice(closeIdx + THINK_CLOSE.length);
+    streamingState.inThink = false;
+  }
 }
 
 function requestConversation() {
