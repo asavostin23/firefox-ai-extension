@@ -15,6 +15,12 @@ function sanitizeFragment(root) {
 }
 
 const allowedTags = new Set([
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
   'p',
   'br',
   'strong',
@@ -22,12 +28,15 @@ const allowedTags = new Set([
   'b',
   'i',
   'u',
+  'blockquote',
   'code',
   'pre',
   'ul',
   'ol',
   'li',
   'a',
+  'hr',
+  'img',
   'span',
   'div',
 ]);
@@ -63,6 +72,16 @@ function sanitizeNode(node, doc) {
     if (href && uriSafePattern.test(href.trim())) {
       cleanElement.setAttribute('href', href);
     }
+  } else if (tag === 'img') {
+    const src = node.getAttribute('src');
+    if (!src || !uriSafePattern.test(src.trim())) {
+      return null;
+    }
+    cleanElement.setAttribute('src', src);
+    const alt = node.getAttribute('alt');
+    if (alt) {
+      cleanElement.setAttribute('alt', alt);
+    }
   }
 
   node.childNodes.forEach((child) => {
@@ -90,6 +109,15 @@ function collectSanitizedChildren(parent, doc) {
   return nodes;
 }
 
+function extractReasoningSections(raw) {
+  const reasoningSegments = [];
+  const visibleText = raw.replace(/<think>([\s\S]*?)<\/think>/gi, (_, content) => {
+    reasoningSegments.push(content);
+    return '';
+  });
+  return { visibleText, reasoningSegments };
+}
+
 function parseAnswerContent(raw) {
   const fallbackText = 'Empty response';
   if (!raw) {
@@ -100,21 +128,27 @@ function parseAnswerContent(raw) {
   }
 
   try {
+    const { visibleText, reasoningSegments } = extractReasoningSections(raw);
     const parser = new DOMParser();
-    const doc = parser.parseFromString(`<div>${raw}</div>`, 'text/html');
+    const html = typeof snarkdown === 'function' ? snarkdown(visibleText) : visibleText;
+    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
     const container = doc.body.firstElementChild || doc.body;
 
     sanitizeFragment(container);
 
     const reasoningContainer = doc.createElement('div');
-    container.querySelectorAll('think').forEach((node) => {
-      sanitizeFragment(node);
+    reasoningSegments.forEach((segment) => {
+      const reasoningHtml = typeof snarkdown === 'function' ? snarkdown(segment) : segment;
+      const temp = doc.createElement('div');
+      temp.innerHTML = reasoningHtml;
+      sanitizeFragment(temp);
+
       const wrapper = doc.createElement('div');
-      collectSanitizedChildren(node, doc).forEach((child) => {
+      collectSanitizedChildren(temp, doc).forEach((child) => {
         wrapper.appendChild(child);
       });
+
       reasoningContainer.appendChild(wrapper);
-      node.remove();
     });
 
     const visibleNodes = collectSanitizedChildren(container, doc);
