@@ -5,6 +5,7 @@ const DEFAULT_SETTINGS = {
   apiKey: '',
   baseUrl: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
+  responseTarget: 'tab',
   temperature: 0.3,
   maxTokens: 4096
 };
@@ -12,6 +13,7 @@ const DEFAULT_SETTINGS = {
 const SYSTEM_PROMPT = 'You are a helpful assistant for summarizing web content.';
 const STORAGE_KEY = 'conversation';
 const responsePorts = new Set();
+const RESPONSE_TARGETS = ['tab', 'sidebar', 'both'];
 
 function getDefaultBaseUrl(provider) {
   return provider === 'anthropic'
@@ -22,6 +24,9 @@ function getDefaultBaseUrl(provider) {
 function normalizeSettings(settings) {
   const provider = settings.provider || DEFAULT_SETTINGS.provider;
   let baseUrl = settings.baseUrl;
+  const responseTarget = RESPONSE_TARGETS.includes(settings.responseTarget)
+    ? settings.responseTarget
+    : DEFAULT_SETTINGS.responseTarget;
 
   if (!baseUrl || (provider === 'anthropic' && baseUrl === DEFAULT_SETTINGS.baseUrl)) {
     baseUrl = getDefaultBaseUrl(provider);
@@ -31,11 +36,38 @@ function normalizeSettings(settings) {
     ...settings,
     provider,
     baseUrl,
+    responseTarget,
   };
 }
 
 function log(...args) {
   console.log('[AI Page Assistant]', ...args);
+}
+
+function openSidebar() {
+  if (!api.sidebarAction?.open) {
+    log('Sidebar API is not available in this browser.');
+    return Promise.resolve();
+  }
+
+  try {
+    return api.sidebarAction.open();
+  } catch (error) {
+    log('Failed to open sidebar', error);
+    return Promise.resolve();
+  }
+}
+
+function openResponseViews(target) {
+  const shouldOpenTab = target === 'tab' || target === 'both';
+  const shouldOpenSidebar = target === 'sidebar' || target === 'both';
+
+  return {
+    tabPromise: shouldOpenTab
+      ? api.tabs.create({ url: api.runtime.getURL('response.html') })
+      : Promise.resolve(),
+    sidebarPromise: shouldOpenSidebar ? openSidebar() : Promise.resolve()
+  };
 }
 
 api.runtime.onInstalled.addListener(() => {
@@ -68,7 +100,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: prompt.content, displayText: prompt.displayText }
     ];
-    const responseTabPromise = api.tabs.create({ url: api.runtime.getURL('response.html') });
+    const { tabPromise: responseTabPromise, sidebarPromise } = openResponseViews(settings.responseTarget);
 
     const initialConversation = buildConversation({
       source: info.menuItemId === 'ai-selection' ? 'selection' : 'page',
@@ -94,7 +126,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
 
     await persistConversation(conversation);
     broadcastConversation(conversation);
-    await responseTabPromise;
+    await Promise.all([responseTabPromise, sidebarPromise]);
   } catch (error) {
     log('Error calling model', error);
     api.notifications.create({
