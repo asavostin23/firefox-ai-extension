@@ -68,18 +68,33 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: prompt.content, displayText: prompt.displayText }
     ];
+    const responseTabPromise = api.tabs.create({ url: api.runtime.getURL('response.html') });
 
-    const answer = await callModel(toModelMessages(conversationMessages), settings);
-    const conversation = buildConversation({
+    const initialConversation = buildConversation({
       source: info.menuItemId === 'ai-selection' ? 'selection' : 'page',
       url: tab.url || '',
-      messages: [...conversationMessages, { role: 'assistant', content: answer }],
+      messages: conversationMessages,
       settings
     });
 
+    await persistConversation(initialConversation);
+    broadcastConversation(initialConversation);
+
+    const answer = await callModel(
+      toModelMessages(conversationMessages),
+      settings,
+      (chunk) => broadcastToken(chunk)
+    );
+
+    const conversation = {
+      ...initialConversation,
+      messages: [...conversationMessages, { role: 'assistant', content: answer }],
+      updatedAt: Date.now()
+    };
+
     await persistConversation(conversation);
     broadcastConversation(conversation);
-    await api.tabs.create({ url: api.runtime.getURL('response.html') });
+    await responseTabPromise;
   } catch (error) {
     log('Error calling model', error);
     api.notifications.create({
