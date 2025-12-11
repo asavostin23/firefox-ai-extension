@@ -274,7 +274,7 @@ function renderConversation(data) {
       if (msg.role === 'assistant') {
         body.appendChild(buildAssistantContent(msg.content));
       } else {
-        body.textContent = msg.content;
+        body.textContent = msg.displayText || msg.content;
       }
 
       messageEl.appendChild(body);

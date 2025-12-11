@@ -64,16 +64,16 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
 
   try {
     const prompt = await buildPrompt(info, tab);
-    const messages = [
+    const conversationMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: prompt }
+      { role: 'user', content: prompt.content, displayText: prompt.displayText }
     ];
 
-    const answer = await callModel(messages, settings);
+    const answer = await callModel(toModelMessages(conversationMessages), settings);
     const conversation = buildConversation({
       source: info.menuItemId === 'ai-selection' ? 'selection' : 'page',
       url: tab.url || '',
-      messages: [...messages, { role: 'assistant', content: answer }],
+      messages: [...conversationMessages, { role: 'assistant', content: answer }],
       settings
     });
 
@@ -118,12 +118,22 @@ async function buildPrompt(info, tab) {
     const selectionText = (info.selectionText || '').trim().slice(0, 4000);
     const { title, text } = await getPageContext(tabId, 8000);
 
-    return `Provide a concise explanation for the following selection using the surrounding page context and include a short actionable insight if relevant.\n\nPage URL: ${tab.url}\nPage Title: ${title || 'Untitled'}\nPage text snippet:\n${text}\n\nSelection:\n${selectionText}`;
+    return {
+      displayText: `Asking about selection on ${tab.url}`,
+      content: `Provide a concise explanation for the following selection using the surrounding page context and include a short actionable insight if relevant.\n\nPage URL: ${tab.url}\nPage Title: ${title || 'Untitled'}\nPage text snippet:\n${text}\n\nSelection:\n${selectionText}`
+    };
   }
 
   const tabId = tab.id;
   const { title, text } = await getPageContext(tabId);
-  return `Provide a brief summary of this page and list the top 3 takeaways.\n\nURL: ${tab.url}\nTitle: ${title || 'Untitled'}\nContent:\n${text}`;
+  return {
+    displayText: `Summarizing page ${tab.url}`,
+    content: `Provide a brief summary of this page and list the top 3 takeaways.\n\nURL: ${tab.url}\nTitle: ${title || 'Untitled'}\nContent:\n${text}`
+  };
+}
+
+function toModelMessages(messages) {
+  return messages.map(({ role, content }) => ({ role, content }));
 }
 
 async function getPageContext(tabId, sliceLength = 12000) {
@@ -387,10 +397,11 @@ async function handleFollowUp(prompt, port) {
     maxTokens: conversation.maxTokens ?? settings.maxTokens
   });
 
-  const messages = [...conversation.messages, { role: 'user', content: question }];
+  const newUserMessage = { role: 'user', content: question, displayText: question };
+  const messages = [...conversation.messages, newUserMessage];
 
   try {
-    const answer = await callModel(messages, mergedSettings, (chunk) => broadcastToken(chunk));
+    const answer = await callModel(toModelMessages(messages), mergedSettings, (chunk) => broadcastToken(chunk));
     const updatedConversation = {
       ...conversation,
       messages: [...messages, { role: 'assistant', content: answer }],
