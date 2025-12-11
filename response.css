@@ -138,7 +138,7 @@ button[disabled] {
 }
 
 .follow-up {
-  background: rgba(255, 255, 255, 0.05);
+  background: #17222f;
   border-radius: 8px;
   padding: 14px;
   display: flex;
