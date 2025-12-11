@@ -157,6 +157,8 @@ button[disabled] {
   border-radius: 8px;
   padding: 10px;
   font: inherit;
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 .form-actions {
@@ -164,6 +166,10 @@ button[disabled] {
   gap: 12px;
   align-items: center;
   justify-content: space-between;
+}
+
+#send {
+  margin-top: 8px;
 }
 
 #status {
@@ -174,6 +180,18 @@ button[disabled] {
 
 #status.error {
   color: #fecdd3;
+}
+
+.assistant-content table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.assistant-content th,
+.assistant-content td {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px;
+  text-align: left;
 }
 
 .sr-only {
