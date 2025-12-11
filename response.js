@@ -168,24 +168,50 @@ function parseAnswerContent(raw) {
   }
 }
 
-function render(result) {
+let conversation = null;
+let port;
+let streamingTarget = null;
+let sending = false;
+
+function showStatus(message, isError = false) {
+  const el = $('status');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('error', Boolean(isError));
+}
+
+function setSendingState(isSending) {
+  sending = isSending;
+  const prompt = $('prompt');
+  const sendBtn = $('send');
+  if (prompt) prompt.disabled = isSending;
+  if (sendBtn) sendBtn.disabled = isSending;
+}
+
+function renderMeta(data) {
   const meta = $('meta');
-  const answer = $('answer');
-  if (!result) {
+  if (!meta) return;
+
+  if (!data) {
     meta.textContent = 'No previous response saved yet.';
-    answer.textContent = '';
     return;
   }
-  meta.innerHTML = `
-    <div><strong>Source:</strong> ${result.source}</div>
-    <div><strong>URL:</strong> ${result.url || 'N/A'}</div>
-    <div><strong>Asked:</strong> ${formatDate(result.createdAt)}</div>
-    ${result.completedAt ? `<div><strong>Updated:</strong> ${formatDate(result.completedAt)}</div>` : ''}
-  `;
 
-  const { visibleNodes, reasoningNodes } = parseAnswerContent(result.answer);
+  const rows = [
+    `<div><strong>Source:</strong> ${data.source || 'N/A'}</div>`,
+    `<div><strong>URL:</strong> ${data.url || 'N/A'}</div>`,
+    `<div><strong>Model:</strong> ${data.provider || 'openai'} / ${data.model || 'unknown'}</div>`,
+    `<div><strong>Updated:</strong> ${formatDate(data.updatedAt || data.createdAt)}</div>`
+  ];
 
-  answer.textContent = '';
+  meta.innerHTML = rows.join('');
+}
+
+function buildAssistantContent(answer) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'assistant-content';
+
+  const { visibleNodes, reasoningNodes } = parseAnswerContent(answer);
 
   const status = result.status || 'complete';
 
@@ -224,20 +250,15 @@ function render(result) {
 
   const visibleSection = document.createElement('div');
   visibleSection.className = 'answer-visible';
-  visibleNodes.forEach((node) => {
-    visibleSection.appendChild(document.importNode(node, true));
-  });
-
-  answer.appendChild(visibleSection);
+  visibleNodes.forEach((node) => visibleSection.appendChild(document.importNode(node, true)));
+  wrapper.appendChild(visibleSection);
 
   if (reasoningNodes.length) {
     const toggle = document.createElement('button');
-    toggle.id = 'toggle-reasoning';
     toggle.className = 'reasoning-toggle';
     toggle.textContent = 'Show reasoning';
 
     const reasoningSection = document.createElement('div');
-    reasoningSection.id = 'reasoning';
     reasoningSection.className = 'reasoning hidden';
 
     const label = document.createElement('p');
@@ -245,31 +266,162 @@ function render(result) {
     label.textContent = 'Reasoning';
     reasoningSection.appendChild(label);
 
-    reasoningNodes.forEach((node) => {
-      reasoningSection.appendChild(document.importNode(node, true));
-    });
+    reasoningNodes.forEach((node) => reasoningSection.appendChild(document.importNode(node, true)));
 
     toggle.addEventListener('click', () => {
       const isHidden = reasoningSection.classList.toggle('hidden');
       toggle.textContent = isHidden ? 'Show reasoning' : 'Hide reasoning';
     });
 
-    answer.append(toggle, reasoningSection);
+    wrapper.append(toggle, reasoningSection);
   }
+
+  return wrapper;
 }
 
-function load() {
-  api.storage.local.get(['lastResult'], ({ lastResult }) => {
-    render(lastResult);
+function renderConversation(data) {
+  conversation = data;
+  const container = $('conversation');
+  if (!container) return;
+
+  container.textContent = '';
+  streamingTarget = null;
+
+  renderMeta(data);
+
+  if (!data) return;
+
+  const messages = data.messages || [];
+  messages
+    .filter((msg) => msg.role !== 'system')
+    .forEach((msg) => {
+      const messageEl = document.createElement('article');
+      messageEl.className = `message ${msg.role}`;
+
+      const label = document.createElement('p');
+      label.className = 'label';
+      label.textContent = msg.role === 'assistant' ? 'Assistant' : 'You';
+      messageEl.appendChild(label);
+
+      const body = document.createElement('div');
+      body.className = 'message-body';
+
+      if (msg.role === 'assistant') {
+        body.appendChild(buildAssistantContent(msg.content));
+      } else {
+        body.textContent = msg.content;
+      }
+
+      messageEl.appendChild(body);
+      container.appendChild(messageEl);
+    });
+}
+
+function appendUserMessage(prompt) {
+  const container = $('conversation');
+  if (!container) return;
+
+  const messageEl = document.createElement('article');
+  messageEl.className = 'message user';
+
+  const label = document.createElement('p');
+  label.className = 'label';
+  label.textContent = 'You';
+  messageEl.appendChild(label);
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+  body.textContent = prompt;
+  messageEl.appendChild(body);
+
+  container.appendChild(messageEl);
+  messageEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function ensureStreamingAssistant() {
+  if (streamingTarget) return streamingTarget;
+
+  const container = $('conversation');
+  if (!container) return null;
+
+  const messageEl = document.createElement('article');
+  messageEl.className = 'message assistant';
+
+  const label = document.createElement('p');
+  label.className = 'label';
+  label.textContent = 'Assistant';
+  messageEl.appendChild(label);
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+  const textNode = document.createTextNode('');
+  body.appendChild(textNode);
+
+  messageEl.appendChild(body);
+  container.appendChild(messageEl);
+  messageEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+  streamingTarget = { container: messageEl, textNode };
+  return streamingTarget;
+}
+
+function handleToken(chunk) {
+  const target = ensureStreamingAssistant();
+  if (!target) return;
+  target.textNode.textContent += chunk;
+}
+
+function requestConversation() {
+  port?.postMessage({ type: 'get-conversation' });
+}
+
+function handleFollowUp(evt) {
+  evt.preventDefault();
+  if (sending) return;
+
+  const prompt = $('prompt').value.trim();
+  if (!prompt) {
+    showStatus('Enter a follow-up prompt.', true);
+    return;
+  }
+
+  if (!conversation) {
+    showStatus('No conversation found to continue.', true);
+    return;
+  }
+
+  setSendingState(true);
+  showStatus('Sending follow-up...');
+  $('prompt').value = '';
+  appendUserMessage(prompt);
+  port?.postMessage({ type: 'followup', prompt });
+}
+
+function initPort() {
+  port = api.runtime.connect({ name: 'response-view' });
+  port.onMessage.addListener((message) => {
+    if (message.type === 'conversation') {
+      setSendingState(false);
+      showStatus('');
+      renderConversation(message.conversation);
+    }
+
+    if (message.type === 'token') {
+      handleToken(message.chunk);
+      showStatus('Receiving response...');
+    }
+
+    if (message.type === 'error') {
+      setSendingState(false);
+      showStatus(message.message || 'An error occurred', true);
+    }
   });
 }
 
 (function init() {
-  $('refresh').addEventListener('click', load);
-  api.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.lastResult) {
-      render(changes.lastResult.newValue);
-    }
-  });
-  load();
+  $('refresh').addEventListener('click', requestConversation);
+  $('followup-form').addEventListener('submit', handleFollowUp);
+
+  initPort();
+  requestConversation();
 })();

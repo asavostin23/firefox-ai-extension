@@ -10,12 +10,23 @@
     <header>
       <div>
         <p class="eyebrow">AI Page Assistant</p>
-        <h1>Latest response</h1>
+        <h1>Conversation</h1>
       </div>
       <button id="refresh">Refresh</button>
     </header>
     <section id="meta"></section>
-    <article id="answer"></article>
+    <section id="conversation" class="conversation"></section>
+    <section class="follow-up">
+      <h2>Ask a follow-up</h2>
+      <form id="followup-form">
+        <label class="sr-only" for="prompt">Follow-up prompt</label>
+        <textarea id="prompt" rows="3" placeholder="Ask another question about this page..."></textarea>
+        <div class="form-actions">
+          <button type="submit" id="send">Send</button>
+          <p id="status" aria-live="polite"></p>
+        </div>
+      </form>
+    </section>
   </main>
   <script src="snarkdown.js"></script>
   <script src="response.js"></script>
