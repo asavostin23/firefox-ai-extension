@@ -6,7 +6,7 @@ const DEFAULT_SETTINGS = {
   baseUrl: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
   temperature: 0.3,
-  maxTokens: 512
+  maxTokens: 4096
 };
 
 const SYSTEM_PROMPT = 'You are a helpful assistant for summarizing web content.';
@@ -62,6 +62,8 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
+  let baseResult;
+
   try {
     const prompt = await buildPrompt(info, tab);
     const messages = [
@@ -80,8 +82,25 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
     await persistConversation(conversation);
     broadcastConversation(conversation);
     await api.tabs.create({ url: api.runtime.getURL('response.html') });
+
+    const answer = await callModel(prompt, settings);
+
+    await persistResult({
+      ...baseResult,
+      status: 'complete',
+      answer,
+      completedAt: Date.now()
+    });
   } catch (error) {
     log('Error calling model', error);
+    if (baseResult) {
+      await persistResult({
+        ...baseResult,
+        status: 'error',
+        answer: error?.message || String(error),
+        completedAt: Date.now()
+      });
+    }
     api.notifications.create({
       type: 'basic',
       iconUrl: 'icons/icon-48.png',

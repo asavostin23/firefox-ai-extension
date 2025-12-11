@@ -5,7 +5,7 @@ const defaults = {
   baseUrl: 'https://api.openai.com/v1/chat/completions',
   model: 'gpt-4o-mini',
   temperature: 0.3,
-  maxTokens: 512
+  maxTokens: 4096
 };
 
 function getStoredSettings() {
@@ -31,6 +31,27 @@ function showStatus(message, isError = false) {
   el.style.color = isError ? '#fecdd3' : '#a7f3d0';
 }
 
+function validateAndDisplayStatus() {
+  const apiKeyValue = $('apiKey').value.trim();
+  const maxTokensInput = $('maxTokens');
+  const maxTokensValue = Number.parseFloat(maxTokensInput.value);
+  const min = maxTokensInput.min === '' ? -Infinity : Number(maxTokensInput.min);
+  const max = maxTokensInput.max === '' ? Infinity : Number(maxTokensInput.max);
+
+  if (!apiKeyValue) {
+    showStatus('Enter an API key to enable requests.', true);
+    return false;
+  }
+
+  if (!Number.isFinite(maxTokensValue) || maxTokensValue < min || maxTokensValue > max) {
+    showStatus(`Max tokens must be between ${min} and ${max}.`, true);
+    return false;
+  }
+
+  showStatus('Settings ready. Use the context menu to send prompts.');
+  return true;
+}
+
 async function loadSettings() {
   try {
     const settings = await getStoredSettings();
@@ -40,6 +61,8 @@ async function loadSettings() {
     $('model').value = settings.model;
     $('temperature').value = settings.temperature;
     $('maxTokens').value = settings.maxTokens;
+
+    validateAndDisplayStatus();
   } catch (error) {
     showStatus(error.message || String(error), true);
   }
@@ -73,6 +96,7 @@ async function saveSettings(evt) {
       maxTokens: parseNumberInput('maxTokens', existing.maxTokens)
     };
 
+    validateAndDisplayStatus();
     api.storage.local.set(payload, () => {
       if (api.runtime.lastError) {
         showStatus(api.runtime.lastError.message, true);
