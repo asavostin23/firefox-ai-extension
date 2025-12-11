@@ -9,6 +9,31 @@ const DEFAULT_SETTINGS = {
   maxTokens: 512
 };
 
+const SYSTEM_PROMPT = 'You are a helpful assistant for summarizing web content.';
+const STORAGE_KEY = 'conversation';
+const responsePorts = new Set();
+
+function getDefaultBaseUrl(provider) {
+  return provider === 'anthropic'
+    ? 'https://api.anthropic.com/v1/messages'
+    : DEFAULT_SETTINGS.baseUrl;
+}
+
+function normalizeSettings(settings) {
+  const provider = settings.provider || DEFAULT_SETTINGS.provider;
+  let baseUrl = settings.baseUrl;
+
+  if (!baseUrl || (provider === 'anthropic' && baseUrl === DEFAULT_SETTINGS.baseUrl)) {
+    baseUrl = getDefaultBaseUrl(provider);
+  }
+
+  return {
+    ...settings,
+    provider,
+    baseUrl,
+  };
+}
+
 function log(...args) {
   console.log('[AI Page Assistant]', ...args);
 }
@@ -31,7 +56,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
-  const settings = await loadSettings();
+  const settings = normalizeSettings(await loadSettings());
   if (!settings.apiKey) {
     await api.tabs.create({ url: api.runtime.getURL('popup.html') });
     return;
@@ -39,14 +64,21 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
 
   try {
     const prompt = await buildPrompt(info, tab);
-    const answer = await callModel(prompt, settings);
-    await persistResult({
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: prompt }
+    ];
+
+    const answer = await callModel(messages, settings);
+    const conversation = buildConversation({
       source: info.menuItemId === 'ai-selection' ? 'selection' : 'page',
-      question: prompt,
-      answer,
       url: tab.url || '',
-      createdAt: Date.now()
+      messages: [...messages, { role: 'assistant', content: answer }],
+      settings
     });
+
+    await persistConversation(conversation);
+    broadcastConversation(conversation);
     await api.tabs.create({ url: api.runtime.getURL('response.html') });
   } catch (error) {
     log('Error calling model', error);
@@ -57,6 +89,27 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
       message: error?.message || String(error)
     });
   }
+});
+
+api.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'response-view') return;
+
+  responsePorts.add(port);
+
+  port.onMessage.addListener(async (message) => {
+    if (message?.type === 'get-conversation') {
+      const conversation = await getConversation();
+      port.postMessage({ type: 'conversation', conversation });
+    }
+
+    if (message?.type === 'followup') {
+      await handleFollowUp(message.prompt, port);
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    responsePorts.delete(port);
+  });
 });
 
 async function buildPrompt(info, tab) {
@@ -87,16 +140,23 @@ async function getPageContext(tabId, sliceLength = 12000) {
   return { title: context?.title || '', text: context?.text || '' };
 }
 
-async function callModel(prompt, settings) {
+async function callModel(messages, settings, onToken) {
   const provider = settings.provider || 'openai';
   if (provider === 'anthropic') {
-    return callAnthropic(prompt, settings);
+    return callAnthropic(messages, settings, onToken);
   }
-  return callOpenAI(prompt, settings);
+  return callOpenAI(messages, settings, onToken);
 }
 
-async function callOpenAI(prompt, settings) {
-  const response = await fetch(settings.baseUrl || DEFAULT_SETTINGS.baseUrl, {
+function getSystemAndMessages(messages) {
+  const systemMessage = messages.find((m) => m.role === 'system');
+  const chatMessages = messages.filter((m) => m.role !== 'system');
+  return { system: systemMessage?.content, chatMessages };
+}
+
+async function callOpenAI(messages, settings, onToken) {
+  const url = settings.baseUrl || getDefaultBaseUrl('openai');
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -106,10 +166,8 @@ async function callOpenAI(prompt, settings) {
       model: settings.model || DEFAULT_SETTINGS.model,
       temperature: Number(settings.temperature ?? DEFAULT_SETTINGS.temperature),
       max_tokens: Number(settings.maxTokens ?? DEFAULT_SETTINGS.maxTokens),
-      messages: [
-        { role: 'system', content: 'You are a helpful assistant for summarizing web content.' },
-        { role: 'user', content: prompt }
-      ]
+      stream: Boolean(onToken),
+      messages
     })
   });
 
@@ -118,16 +176,57 @@ async function callOpenAI(prompt, settings) {
     throw new Error(`OpenAI-style API error (${response.status}): ${text}`);
   }
 
-  const data = await response.json();
-  const message = data?.choices?.[0]?.message?.content;
-  if (!message) {
-    throw new Error('No content returned from OpenAI-style API');
+  if (!onToken) {
+    const data = await response.json();
+    const message = data?.choices?.[0]?.message?.content;
+    if (!message) {
+      throw new Error('No content returned from OpenAI-style API');
+    }
+    return message.trim();
   }
-  return message.trim();
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response stream available');
+  }
+
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop() || '';
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.replace(/^data:\s*/, '');
+      if (payload === '[DONE]') continue;
+
+      try {
+        const json = JSON.parse(payload);
+        const delta = json?.choices?.[0]?.delta?.content;
+        if (delta) {
+          fullText += delta;
+          onToken?.(delta);
+        }
+      } catch (err) {
+        log('Failed to parse OpenAI stream chunk', err);
+      }
+    }
+  }
+
+  return fullText.trim();
 }
 
-async function callAnthropic(prompt, settings) {
-  const url = settings.baseUrl || 'https://api.anthropic.com/v1/messages';
+async function callAnthropic(messages, settings, onToken) {
+  const url = settings.baseUrl || getDefaultBaseUrl('anthropic');
+  const { system, chatMessages } = getSystemAndMessages(messages);
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -139,10 +238,9 @@ async function callAnthropic(prompt, settings) {
       model: settings.model || 'claude-3-haiku-20240307',
       max_tokens: Number(settings.maxTokens ?? DEFAULT_SETTINGS.maxTokens),
       temperature: Number(settings.temperature ?? DEFAULT_SETTINGS.temperature),
-      system: 'You are a helpful assistant for summarizing web content.',
-      messages: [
-        { role: 'user', content: prompt }
-      ]
+      system,
+      messages: chatMessages,
+      stream: Boolean(onToken)
     })
   });
 
@@ -151,12 +249,52 @@ async function callAnthropic(prompt, settings) {
     throw new Error(`Anthropic API error (${response.status}): ${text}`);
   }
 
-  const data = await response.json();
-  const content = data?.content?.[0]?.text;
-  if (!content) {
-    throw new Error('No content returned from Anthropic API');
+  if (!onToken) {
+    const data = await response.json();
+    const content = data?.content?.[0]?.text;
+    if (!content) {
+      throw new Error('No content returned from Anthropic API');
+    }
+    return content.trim();
   }
-  return content.trim();
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response stream available');
+  }
+
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop() || '';
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.replace(/^data:\s*/, '');
+      if (payload === '[DONE]') continue;
+
+      try {
+        const json = JSON.parse(payload);
+        const delta = json?.delta?.text;
+        if (delta) {
+          fullText += delta;
+          onToken?.(delta);
+        }
+      } catch (err) {
+        log('Failed to parse Anthropic stream chunk', err);
+      }
+    }
+  }
+
+  return fullText.trim();
 }
 
 async function loadSettings() {
@@ -165,9 +303,24 @@ async function loadSettings() {
   });
 }
 
-async function persistResult(result) {
+function buildConversation({ source, url, messages, settings }) {
+  const provider = settings.provider || DEFAULT_SETTINGS.provider;
+  return {
+    source,
+    url,
+    createdAt: Date.now(),
+    provider,
+    model: settings.model || DEFAULT_SETTINGS.model,
+    temperature: Number(settings.temperature ?? DEFAULT_SETTINGS.temperature),
+    maxTokens: Number(settings.maxTokens ?? DEFAULT_SETTINGS.maxTokens),
+    baseUrl: settings.baseUrl || getDefaultBaseUrl(provider),
+    messages
+  };
+}
+
+async function persistConversation(conversation) {
   return new Promise((resolve, reject) => {
-    api.storage.local.set({ lastResult: result }, () => {
+    api.storage.local.set({ [STORAGE_KEY]: conversation }, () => {
       if (api.runtime.lastError) {
         reject(api.runtime.lastError);
       } else {
@@ -175,4 +328,80 @@ async function persistResult(result) {
       }
     });
   });
+}
+
+async function getConversation() {
+  return new Promise((resolve) => {
+    api.storage.local.get([STORAGE_KEY], ({ [STORAGE_KEY]: conversation }) => {
+      resolve(conversation || null);
+    });
+  });
+}
+
+function broadcastConversation(conversation) {
+  responsePorts.forEach((port) => {
+    try {
+      port.postMessage({ type: 'conversation', conversation });
+    } catch (err) {
+      log('Failed to send conversation to a port', err);
+    }
+  });
+}
+
+function broadcastToken(chunk) {
+  if (!chunk) return;
+  responsePorts.forEach((port) => {
+    try {
+      port.postMessage({ type: 'token', chunk });
+    } catch (err) {
+      log('Failed to send token to a port', err);
+    }
+  });
+}
+
+async function handleFollowUp(prompt, port) {
+  const question = (prompt || '').trim();
+  if (!question) {
+    port?.postMessage({ type: 'error', message: 'Please enter a prompt to continue the conversation.' });
+    return;
+  }
+
+  const conversation = await getConversation();
+  if (!conversation) {
+    port?.postMessage({ type: 'error', message: 'No previous conversation found.' });
+    return;
+  }
+
+  const settings = await loadSettings();
+  if (!settings.apiKey) {
+    port?.postMessage({ type: 'error', message: 'Add your API key in the extension settings to continue.' });
+    return;
+  }
+
+  const mergedSettings = normalizeSettings({
+    ...settings,
+    provider: conversation.provider || settings.provider,
+    model: conversation.model || settings.model,
+    baseUrl: conversation.baseUrl || settings.baseUrl || getDefaultBaseUrl(conversation.provider || settings.provider),
+    temperature: conversation.temperature ?? settings.temperature,
+    maxTokens: conversation.maxTokens ?? settings.maxTokens
+  });
+
+  const messages = [...conversation.messages, { role: 'user', content: question }];
+
+  try {
+    const answer = await callModel(messages, mergedSettings, (chunk) => broadcastToken(chunk));
+    const updatedConversation = {
+      ...conversation,
+      messages: [...messages, { role: 'assistant', content: answer }],
+      updatedAt: Date.now()
+    };
+
+    await persistConversation(updatedConversation);
+    broadcastConversation(updatedConversation);
+  } catch (error) {
+    const message = error?.message || String(error);
+    log('Follow-up failed', message);
+    port?.postMessage({ type: 'error', message });
+  }
 }
