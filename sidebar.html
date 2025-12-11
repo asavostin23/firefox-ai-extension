@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Page Assistant Sidebar</title>
+  <link rel="stylesheet" href="response.css" />
+  <link rel="stylesheet" href="sidebar.css" />
+</head>
+<body class="sidebar">
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">AI Page Assistant</p>
+        <h1>Sidebar Conversation</h1>
+      </div>
+      <button id="refresh">Refresh</button>
+    </header>
+    <section id="meta"></section>
+    <section id="conversation" class="conversation"></section>
+    <section class="follow-up">
+      <h2>Ask a follow-up</h2>
+      <form id="followup-form">
+        <label class="sr-only" for="prompt">Follow-up prompt</label>
+        <textarea id="prompt" rows="3" placeholder="Ask another question about this page..."></textarea>
+        <div class="form-actions">
+          <button type="submit" id="send">Send</button>
+          <p id="status" aria-live="polite"></p>
+        </div>
+      </form>
+    </section>
+  </main>
+  <script src="snarkdown.js"></script>
+  <script src="response.js"></script>
+</body>
+</html>

@@ -17,6 +17,13 @@
     "default_popup": "popup.html",
     "default_title": "AI Page Assistant"
   },
+  "sidebar_action": {
+    "default_title": "AI Page Assistant",
+    "default_panel": "sidebar.html",
+    "default_icon": {
+      "32": "icons/sidebar.svg"
+    }
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "ai-page-assistant@example.com",

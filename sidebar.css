@@ -1,0 +1,58 @@
+body.sidebar {
+  background: #0b1624;
+}
+
+body.sidebar main {
+  max-width: none;
+  width: auto;
+  margin: 0;
+  padding: 12px 10px 16px;
+  gap: 12px;
+}
+
+body.sidebar header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+body.sidebar h1 {
+  font-size: 20px;
+  margin: 2px 0 0 0;
+}
+
+body.sidebar .conversation {
+  gap: 10px;
+}
+
+body.sidebar .message {
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+body.sidebar .follow-up {
+  gap: 8px;
+}
+
+body.sidebar #meta {
+  grid-template-columns: 1fr;
+}
+
+body.sidebar .reasoning-toggle {
+  font-size: 13px;
+}
+
+body.sidebar textarea#prompt {
+  font-size: 14px;
+  min-height: 64px;
+}
+
+body.sidebar .form-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+body.sidebar #status {
+  min-height: 18px;
+}
