@@ -20,32 +20,48 @@ function showStatus(message, isError = false) {
 
 function loadSettings() {
   api.storage.local.get(defaults, (items) => {
-    $('provider').value = items.provider || defaults.provider;
-    $('apiKey').value = items.apiKey || '';
-    $('baseUrl').value = items.baseUrl || defaults.baseUrl;
-    $('model').value = items.model || defaults.model;
-    $('temperature').value = items.temperature ?? defaults.temperature;
-    $('maxTokens').value = items.maxTokens ?? defaults.maxTokens;
+    const settings = { ...defaults, ...items };
+    $('provider').value = settings.provider;
+    $('apiKey').value = settings.apiKey || '';
+    $('baseUrl').value = settings.baseUrl;
+    $('model').value = settings.model;
+    $('temperature').value = settings.temperature;
+    $('maxTokens').value = settings.maxTokens;
   });
+}
+
+function parseNumberInput(id, fallback) {
+  const input = $(id);
+  const parsed = Number.parseFloat(input.value);
+  const min = input.min === '' ? -Infinity : Number(input.min);
+  const max = input.max === '' ? Infinity : Number(input.max);
+
+  if (Number.isFinite(parsed)) {
+    return Math.min(max, Math.max(min, parsed));
+  }
+
+  return fallback;
 }
 
 function saveSettings(evt) {
   evt.preventDefault();
-  const payload = {
-    provider: $('provider').value,
-    apiKey: $('apiKey').value.trim(),
-    baseUrl: $('baseUrl').value.trim(),
-    model: $('model').value.trim(),
-    temperature: Number($('temperature').value),
-    maxTokens: Number($('maxTokens').value)
-  };
+  api.storage.local.get(defaults, (existing) => {
+    const payload = {
+      provider: $('provider').value,
+      apiKey: $('apiKey').value.trim(),
+      baseUrl: $('baseUrl').value.trim(),
+      model: $('model').value.trim(),
+      temperature: parseNumberInput('temperature', existing.temperature ?? defaults.temperature),
+      maxTokens: parseNumberInput('maxTokens', existing.maxTokens ?? defaults.maxTokens)
+    };
 
-  api.storage.local.set(payload, () => {
-    if (api.runtime.lastError) {
-      showStatus(api.runtime.lastError.message, true);
-    } else {
-      showStatus('Saved. Use the context menu to send prompts.');
-    }
+    api.storage.local.set(payload, () => {
+      if (api.runtime.lastError) {
+        showStatus(api.runtime.lastError.message, true);
+      } else {
+        showStatus('Saved. Use the context menu to send prompts.');
+      }
+    });
   });
 }
 
