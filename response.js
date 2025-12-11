@@ -180,7 +180,7 @@ let streamingTarget = null;
 let sending = false;
 let streamingState = { buffer: '', inThink: false };
 let streamingPlaceholderActive = false;
-let followUpEnabled = false;
+let followUpEnabled = true;
 
 function showStatus(message, isError = false) {
   const el = $('status');
@@ -203,6 +203,12 @@ function setFollowUpEnabled(isEnabled) {
   const sendBtn = $('send');
   if (prompt) prompt.disabled = sending || !followUpEnabled;
   if (sendBtn) sendBtn.disabled = sending || !followUpEnabled;
+}
+
+function updateFollowUpTitle(hasConversation) {
+  const title = $('followup-title');
+  if (!title) return;
+  title.textContent = hasConversation ? 'Ask a follow-up' : 'Ask about this page';
 }
 
 function renderMeta(data) {
@@ -273,7 +279,8 @@ function renderConversation(data) {
   streamingPlaceholderActive = false;
 
   renderMeta(data);
-  setFollowUpEnabled(Boolean(data));
+  setFollowUpEnabled(true);
+  updateFollowUpTitle(Boolean(data));
 
   if (!data) {
     renderEmptyConversation();
@@ -552,7 +559,8 @@ function clearConversation() {
   streamingPlaceholderActive = false;
 
   setSendingState(false);
-  setFollowUpEnabled(false);
+  setFollowUpEnabled(true);
+  updateFollowUpTitle(false);
   showStatus('Conversation cleared.');
 
   port?.postMessage({ type: 'clear-conversation' });
@@ -564,25 +572,19 @@ function handleFollowUp(evt) {
 
   const prompt = $('prompt').value.trim();
   if (!prompt) {
-    showStatus('Enter a follow-up prompt.', true);
-    return;
-  }
-
-  if (!followUpEnabled) {
-    showStatus('Start a new conversation to ask follow-ups.', true);
-    return;
-  }
-
-  if (!conversation) {
-    showStatus('No conversation found to continue.', true);
+    showStatus('Enter a prompt to ask about this page.', true);
     return;
   }
 
   setSendingState(true);
-  showStatus('Sending follow-up...');
+  showStatus(conversation ? 'Sending follow-up...' : 'Asking about this page...');
   $('prompt').value = '';
   appendUserMessage(prompt);
-  port?.postMessage({ type: 'followup', prompt });
+  if (conversation) {
+    port?.postMessage({ type: 'followup', prompt });
+  } else {
+    port?.postMessage({ type: 'ask-about-page', prompt });
+  }
 }
 
 function handleSummarizePage(evt) {
@@ -617,12 +619,14 @@ function initPort() {
 }
 
 (function init() {
-  setFollowUpEnabled(false);
+  setFollowUpEnabled(true);
   const clearButton = $('clear');
   if (clearButton) {
     clearButton.addEventListener('click', clearConversation);
   }
   $('followup-form').addEventListener('submit', handleFollowUp);
+
+  updateFollowUpTitle(false);
 
   initPort();
   requestConversation();

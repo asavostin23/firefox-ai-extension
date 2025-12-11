@@ -8,12 +8,13 @@ body.sidebar main {
   margin: 0;
   padding: 12px 10px 16px;
   gap: 12px;
+  min-height: 100vh;
 }
 
 body.sidebar header {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
 }
 
 body.sidebar h1 {
@@ -48,8 +49,9 @@ body.sidebar textarea#prompt {
 }
 
 body.sidebar .form-actions {
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
