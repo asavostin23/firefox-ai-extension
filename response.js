@@ -173,6 +173,7 @@ let port;
 let streamingTarget = null;
 let sending = false;
 let streamingState = { buffer: '', inThink: false };
+let streamingPlaceholderActive = false;
 
 function showStatus(message, isError = false) {
   const el = $('status');
@@ -253,6 +254,7 @@ function renderConversation(data) {
   container.textContent = '';
   streamingTarget = null;
   streamingState = { buffer: '', inThink: false };
+  streamingPlaceholderActive = false;
 
   renderMeta(data);
 
@@ -282,6 +284,20 @@ function renderConversation(data) {
       messageEl.appendChild(body);
       container.appendChild(messageEl);
     });
+
+  const hasAssistantMessage = messages.some((msg) => msg.role === 'assistant');
+  const hasUserMessage = messages.some((msg) => msg.role === 'user');
+
+  if (!hasAssistantMessage && hasUserMessage) {
+    const target = ensureStreamingAssistant();
+    if (target && !target.textNode.textContent) {
+      target.textNode.textContent = 'Thinking…';
+      streamingPlaceholderActive = true;
+    }
+    showStatus('Thinking…');
+  } else {
+    showStatus('');
+  }
 }
 
 function appendUserMessage(prompt) {
@@ -385,6 +401,11 @@ function appendReasoningChunk(chunk, target) {
 function handleToken(chunk) {
   const target = ensureStreamingAssistant();
   if (!target) return;
+
+  if (streamingPlaceholderActive) {
+    target.textNode.textContent = '';
+    streamingPlaceholderActive = false;
+  }
 
   const THINK_OPEN = '<think>';
   const THINK_CLOSE = '</think>';
