@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Page Assistant</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main>
+    <h1>AI Page Assistant</h1>
+    <p class="hint">Configure an OpenAI- or Anthropic-compatible endpoint, then use the context menu on pages.</p>
+    <form id="settings-form">
+      <label>
+        Provider
+        <select id="provider">
+          <option value="openai">OpenAI-compatible</option>
+          <option value="anthropic">Anthropic</option>
+        </select>
+      </label>
+      <label>
+        API key
+        <input id="apiKey" type="password" autocomplete="off" required />
+      </label>
+      <label>
+        Base URL
+        <input id="baseUrl" type="text" placeholder="https://api.openai.com/v1/chat/completions" />
+      </label>
+      <label>
+        Model name
+        <input id="model" type="text" placeholder="gpt-4o-mini or claude-3-haiku-20240307" />
+      </label>
+      <div class="grid">
+        <label>
+          Temperature
+          <input id="temperature" type="number" min="0" max="1" step="0.1" />
+        </label>
+        <label>
+          Max tokens
+          <input id="maxTokens" type="number" min="64" max="8000" step="64" />
+        </label>
+      </div>
+      <button type="submit">Save settings</button>
+    </form>
+    <div class="status" id="status"></div>
+    <section class="instructions">
+      <h2>Usage</h2>
+      <ol>
+        <li>Select text on any page and choose <strong>Ask AI about selection</strong> from the context menu.</li>
+        <li>Right-click anywhere and choose <strong>Ask AI about this page</strong> for a summary and takeaways.</li>
+        <li>Results open in a new tab with your latest answer. Update settings here anytime.</li>
+      </ol>
+    </section>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
