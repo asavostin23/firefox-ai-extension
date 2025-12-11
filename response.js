@@ -90,6 +90,75 @@ function collectSanitizedChildren(parent, doc) {
   return nodes;
 }
 
+function markdownToHtml(markdown) {
+  if (!markdown) return '';
+
+  const escapeCode = (code) => code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  let html = markdown.replace(/\r\n/g, '\n');
+
+  html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${escapeCode(code.trim())}</code></pre>`);
+
+  html = html.replace(/`([^`]+)`/g, (_, code) => `<code>${escapeCode(code)}</code>`);
+
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  const lines = html.split('\n');
+  const processed = [];
+  let inUl = false;
+  let inOl = false;
+
+  const closeLists = () => {
+    if (inUl) {
+      processed.push('</ul>');
+      inUl = false;
+    }
+    if (inOl) {
+      processed.push('</ol>');
+      inOl = false;
+    }
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+
+    const ulMatch = trimmed.match(/^[-*]\s+(.*)$/);
+    if (ulMatch) {
+      if (!inUl) {
+        closeLists();
+        processed.push('<ul>');
+        inUl = true;
+      }
+      processed.push(`<li>${ulMatch[1]}</li>`);
+      return;
+    }
+
+    const olMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+    if (olMatch) {
+      if (!inOl) {
+        closeLists();
+        processed.push('<ol>');
+        inOl = true;
+      }
+      processed.push(`<li>${olMatch[1]}</li>`);
+      return;
+    }
+
+    closeLists();
+
+    if (trimmed) {
+      processed.push(`<p>${trimmed}</p>`);
+    }
+  });
+
+  closeLists();
+
+  return processed.join('');
+}
+
 function parseAnswerContent(raw) {
   const fallbackText = 'Empty response';
   if (!raw) {
@@ -101,7 +170,8 @@ function parseAnswerContent(raw) {
 
   try {
     const parser = new DOMParser();
-    const doc = parser.parseFromString(`<div>${raw}</div>`, 'text/html');
+    const html = markdownToHtml(raw);
+    const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
     const container = doc.body.firstElementChild || doc.body;
 
     sanitizeFragment(container);
