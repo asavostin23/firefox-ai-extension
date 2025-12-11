@@ -1,0 +1,26 @@
+{
+  "manifest_version": 2,
+  "name": "AI Page Assistant",
+  "version": "1.0.0",
+  "description": "Ask an AI about selected text or the full page using OpenAI- or Anthropic-compatible APIs.",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "tabs",
+    "storage",
+    "notifications"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Page Assistant"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ai-page-assistant@example.com",
+      "strict_min_version": "109.0"
+    }
+  }
+}
