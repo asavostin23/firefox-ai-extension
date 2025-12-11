@@ -213,41 +213,6 @@ function buildAssistantContent(answer) {
 
   const { visibleNodes, reasoningNodes } = parseAnswerContent(answer);
 
-  const status = result.status || 'complete';
-
-  if (status === 'loading') {
-    const loadingContainer = document.createElement('div');
-    loadingContainer.className = 'loading';
-
-    const spinner = document.createElement('div');
-    spinner.className = 'spinner';
-    loadingContainer.appendChild(spinner);
-
-    const loadingText = document.createElement('p');
-    loadingText.className = 'loading-text';
-    loadingText.textContent = 'Waiting for the model to respond...';
-    loadingContainer.appendChild(loadingText);
-
-    answer.appendChild(loadingContainer);
-
-    if (result.answer) {
-      const partialLabel = document.createElement('p');
-      partialLabel.className = 'partial-label';
-      partialLabel.textContent = 'Partial response';
-      answer.appendChild(partialLabel);
-    } else {
-      return;
-    }
-  }
-
-  if (status === 'error') {
-    const errorBox = document.createElement('div');
-    errorBox.className = 'error-box';
-    errorBox.textContent = result.answer || 'An error occurred while fetching the response.';
-    answer.appendChild(errorBox);
-    return;
-  }
-
   const visibleSection = document.createElement('div');
   visibleSection.className = 'answer-visible';
   visibleNodes.forEach((node) => visibleSection.appendChild(document.importNode(node, true)));
