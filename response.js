@@ -275,7 +275,11 @@ function renderConversation(data) {
   renderMeta(data);
   setFollowUpEnabled(Boolean(data));
 
-  if (!data) return;
+  if (!data) {
+    renderEmptyConversation();
+    showStatus('');
+    return;
+  }
 
   const messages = data.messages || [];
   messages
@@ -315,6 +319,34 @@ function renderConversation(data) {
   } else {
     showStatus('');
   }
+}
+
+function renderEmptyConversation() {
+  const container = $('conversation');
+  if (!container) return;
+
+  const empty = document.createElement('article');
+  empty.className = 'empty-state';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Ask about this page';
+  empty.appendChild(title);
+
+  const body = document.createElement('p');
+  body.textContent = 'Start by summarizing the page you are viewing.';
+  empty.appendChild(body);
+
+  const actions = document.createElement('div');
+  actions.className = 'empty-actions';
+
+  const summarizeBtn = document.createElement('button');
+  summarizeBtn.id = 'summarize';
+  summarizeBtn.textContent = 'Summarize';
+  summarizeBtn.addEventListener('click', handleSummarizePage);
+  actions.appendChild(summarizeBtn);
+
+  empty.appendChild(actions);
+  container.appendChild(empty);
 }
 
 function appendUserMessage(prompt) {
@@ -551,6 +583,16 @@ function handleFollowUp(evt) {
   $('prompt').value = '';
   appendUserMessage(prompt);
   port?.postMessage({ type: 'followup', prompt });
+}
+
+function handleSummarizePage(evt) {
+  evt?.preventDefault?.();
+  if (sending) return;
+
+  setFollowUpEnabled(false);
+  setSendingState(true);
+  showStatus('Summarizing page...');
+  port?.postMessage({ type: 'summarize-page' });
 }
 
 function initPort() {

@@ -157,6 +157,10 @@ api.runtime.onConnect.addListener((port) => {
       await clearConversationData();
       broadcastConversation(null);
     }
+
+    if (message?.type === 'summarize-page') {
+      await handleSummarizeCurrentPage(port);
+    }
   });
 
   port.onDisconnect.addListener(() => {
@@ -477,6 +481,58 @@ async function handleFollowUp(prompt, port) {
   } catch (error) {
     const message = error?.message || String(error);
     log('Follow-up failed', message);
+    port?.postMessage({ type: 'error', message });
+  }
+}
+
+async function handleSummarizeCurrentPage(port) {
+  const settings = normalizeSettings(await loadSettings());
+  if (!settings.apiKey) {
+    port?.postMessage({ type: 'error', message: 'Add your API key in the extension settings to summarize this page.' });
+    return;
+  }
+
+  const [activeTab] = await api.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!activeTab?.id || !activeTab.url) {
+    port?.postMessage({ type: 'error', message: 'No active tab found to summarize.' });
+    return;
+  }
+
+  const url = activeTab.url || '';
+  if (/^(about:|chrome:|moz-extension:|chrome-extension:)/i.test(url)) {
+    port?.postMessage({ type: 'error', message: 'Cannot summarize this type of page.' });
+    return;
+  }
+
+  try {
+    const prompt = await buildPrompt({ menuItemId: 'ai-page' }, activeTab);
+    const conversationMessages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: prompt.content, displayText: prompt.displayText }
+    ];
+
+    const initialConversation = buildConversation({
+      source: 'page',
+      url,
+      messages: conversationMessages,
+      settings
+    });
+
+    await persistConversation(initialConversation);
+    broadcastConversation(initialConversation);
+
+    const answer = await callModel(toModelMessages(conversationMessages), settings, (chunk) => broadcastToken(chunk));
+    const conversation = {
+      ...initialConversation,
+      messages: [...conversationMessages, { role: 'assistant', content: answer }],
+      updatedAt: Date.now()
+    };
+
+    await persistConversation(conversation);
+    broadcastConversation(conversation);
+  } catch (error) {
+    const message = error?.message || String(error);
+    log('Summarize current page failed', message);
     port?.postMessage({ type: 'error', message });
   }
 }
