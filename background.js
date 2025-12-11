@@ -87,6 +87,10 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 
   try {
+    if (info.menuItemId === 'ai-page') {
+      await openSidebar();
+    }
+
     const prompt = await buildPrompt(info, tab);
     const conversationMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -143,6 +147,10 @@ api.runtime.onConnect.addListener((port) => {
 
     if (message?.type === 'followup') {
       await handleFollowUp(message.prompt, port);
+    }
+
+    if (message?.type === 'ask-about-page') {
+      await handleInitialQuestion(message.prompt, port);
     }
 
     if (message?.type === 'clear-conversation') {
@@ -438,7 +446,7 @@ async function handleFollowUp(prompt, port) {
 
   const conversation = await getConversation();
   if (!conversation) {
-    port?.postMessage({ type: 'error', message: 'No previous conversation found.' });
+    await handleInitialQuestion(question, port);
     return;
   }
 
@@ -473,6 +481,65 @@ async function handleFollowUp(prompt, port) {
   } catch (error) {
     const message = error?.message || String(error);
     log('Follow-up failed', message);
+    port?.postMessage({ type: 'error', message });
+  }
+}
+
+async function handleInitialQuestion(prompt, port) {
+  const question = (prompt || '').trim();
+  if (!question) {
+    port?.postMessage({ type: 'error', message: 'Please enter a prompt to start.' });
+    return;
+  }
+
+  const settings = normalizeSettings(await loadSettings());
+  if (!settings.apiKey) {
+    port?.postMessage({ type: 'error', message: 'Add your API key in the extension settings to continue.' });
+    return;
+  }
+
+  const [activeTab] = await api.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!activeTab?.id || !activeTab.url) {
+    port?.postMessage({ type: 'error', message: 'No active tab found to answer questions about.' });
+    return;
+  }
+
+  const url = activeTab.url || '';
+  if (/^(about:|chrome:|moz-extension:|chrome-extension:)/i.test(url)) {
+    port?.postMessage({ type: 'error', message: 'Cannot answer questions about this type of page.' });
+    return;
+  }
+
+  try {
+    const { title, text } = await getPageContext(activeTab.id);
+    const questionPrompt = `Use the page context to answer the user's question.\n\nURL: ${url}\nTitle: ${title || 'Untitled'}\nContent:\n${text}\n\nQuestion:\n${question}`;
+    const conversationMessages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: questionPrompt, displayText: question }
+    ];
+
+    const initialConversation = buildConversation({
+      source: 'page',
+      url,
+      messages: conversationMessages,
+      settings
+    });
+
+    await persistConversation(initialConversation);
+    broadcastConversation(initialConversation);
+
+    const answer = await callModel(toModelMessages(conversationMessages), settings, (chunk) => broadcastToken(chunk));
+    const conversation = {
+      ...initialConversation,
+      messages: [...conversationMessages, { role: 'assistant', content: answer }],
+      updatedAt: Date.now()
+    };
+
+    await persistConversation(conversation);
+    broadcastConversation(conversation);
+  } catch (error) {
+    const message = error?.message || String(error);
+    log('Initial question failed', message);
     port?.postMessage({ type: 'error', message });
   }
 }

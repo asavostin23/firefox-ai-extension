@@ -12,6 +12,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 100vh;
 }
 
 header {
@@ -143,6 +144,9 @@ button[disabled] {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 
 .follow-up h2 {
@@ -170,6 +174,8 @@ button[disabled] {
 
 #send {
   margin-top: 8px;
+  align-self: flex-start;
+  min-width: 96px;
 }
 
 #status {
